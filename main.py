@@ -8,12 +8,11 @@ def build_ydl_opts(extra=None):
     opts = {
         "quiet": True,
         "no_warnings": True,
-        "cookiefile": "cookies.txt" if os.path.exists("cookies.txt") else None,
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["ios", "android"],
-            }
-        },
+        # ✅ Cookie dimatikan sementara (di-comment) agar tidak memicu error A/B testing YouTube
+        # "cookiefile": "cookies.txt" if os.path.exists("cookies.txt") else None,
+        
+        # ✅ extractor_args (player_client iOS/Android) dihapus agar yt-dlp 
+        # bisa bebas memilih client web yang lebih stabil.
     }
     if extra:
         opts.update(extra)
@@ -28,6 +27,7 @@ def info():
 
     ydl_opts = build_ydl_opts({
         "extract_flat": False,
+        "ignore_no_formats_error": True, # ✅ Memaksa yt-dlp mengembalikan data meskipun format default gagal
     })
 
     try:
@@ -46,7 +46,6 @@ def info():
                     formats.append({
                         "quality": f.get("format_note") or f.get("resolution") or f"{height}p",
                         "height": height,
-                        # ✅ Pakai endpoint /download — server yang handle merge video+audio
                         "url": f"/download?url={url}&height={height}&type=video",
                         "ext": "mp4",
                         "filesize": f.get("filesize") or f.get("filesize_approx") or 0
@@ -154,7 +153,7 @@ def download():
             filename = ydl.prepare_filename(info)
             # Handle kasus postprocessor ganti ekstensi
             if not os.path.exists(filename):
-                base = os.path.splitext(filename)[0]
+                base = os.path.splitext(filename)
                 for candidate_ext in [ext, "mp4", "webm", "mp3", "m4a"]:
                     candidate = f"{base}.{candidate_ext}"
                     if os.path.exists(candidate):
