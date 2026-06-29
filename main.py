@@ -8,7 +8,7 @@ def build_ydl_opts(extra=None):
     opts = {
         "quiet": True,
         "no_warnings": True,
-        # ✅ Menggunakan cookies dari akun tumbal untuk melewati blokir bot
+        # ✅ Tetap menggunakan cookies dari akun tumbal untuk melewati blokir bot
         "cookiefile": "cookies.txt" if os.path.exists("cookies.txt") else None,
     }
     if extra:
@@ -25,7 +25,7 @@ def info():
     ydl_opts = build_ydl_opts({
         "extract_flat": False,
         "ignore_no_formats_error": True, 
-        "format": "all", # ✅ Menampilkan semua format mentah tanpa seleksi ketat
+        "format": "all", # Menampilkan semua format mentah tanpa seleksi ketat di awal
     })
 
     try:
@@ -109,24 +109,18 @@ def download():
 
     # Pilih format selector berdasarkan tipe dan kualitas
     if media_type == "audio":
-        # ✅ PERBAIKAN UTAMA: Tambahkan /best sebagai fallback jika file murni audio sembunyi/tidak tersedia
-        if abr and abr != "0":
-            fmt = f"bestaudio[abr<={abr}]/bestaudio/best"
-        else:
-            fmt = "bestaudio/best"
+        # ✅ Ambil format terbaik yang tersedia lalu biarkan ffmpeg mengekstrak audionya menjadi MP3
+        fmt = "best"
         postprocessors = [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": "mp3",
-            "preferredquality": abr if abr != "0" else "192",
+            "preferredquality": abr if abr and abr != "0" else "192",
         }]
         mime = "audio/mpeg"
         ext = "mp3"
     else:
-        h = int(height) if height and height != "0" else 0
-        if h > 0:
-            fmt = f"bestvideo[height<={h}]+bestaudio/best[height<={h}]/best"
-        else:
-            fmt = "bestvideo+bestaudio/best"
+        # ✅ Ambil langsung video terbaik yang sudah menyatu agar tidak memicu error ketersediaan format terpisah
+        fmt = "best"
         postprocessors = []
         mime = "video/mp4"
         ext = "mp4"
@@ -147,7 +141,7 @@ def download():
             filename = ydl.prepare_filename(info)
             
             if not os.path.exists(filename):
-                base = os.path.splitext(filename)[0]
+                base = os.path.splitext(filename)
                 for candidate_ext in [ext, "mp4", "webm", "mp3", "m4a"]:
                     candidate = f"{base}.{candidate_ext}"
                     if os.path.exists(candidate):
