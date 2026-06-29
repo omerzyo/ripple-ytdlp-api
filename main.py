@@ -42,44 +42,42 @@ def info():
                 acodec = f.get("acodec", "none")
                 height = f.get("height") or 0
 
-                # ✅ Hanya ambil format yang punya KEDUA video+audio (progressive)
-                # Skip adaptive stream (video-only atau audio-only dari YouTube)
-                if vcodec != "none" and vcodec is not None and acodec != "none" and acodec is not None:
+                if vcodec not in (None, "none") and height > 0:
                     formats.append({
-                        "quality": f.get("format_note") or f.get("resolution") or "unknown",
+                        "quality": f.get("format_note") or f.get("resolution") or f"{height}p",
                         "height": height,
-                        "url": f"/download?url={url}&height={height}&type=video",  # ✅ Pakai endpoint download
-                        "ext": f.get("ext", "mp4"),
+                        # ✅ Pakai endpoint /download — server yang handle merge video+audio
+                        "url": f"/download?url={url}&height={height}&type=video",
+                        "ext": "mp4",
                         "filesize": f.get("filesize") or f.get("filesize_approx") or 0
                     })
 
-                elif acodec != "none" and acodec is not None and (vcodec == "none" or vcodec is None):
-                    abr = f.get("abr") or 0
+                elif acodec not in (None, "none") and vcodec in (None, "none"):
+                    abr = int(f.get("abr") or 0)
                     audio_formats.append({
-                        "quality": f.get("format_note") or str(abr),
-                        "url": f"/download?url={url}&abr={int(abr)}&type=audio",  # ✅ Pakai endpoint download
+                        "quality": f.get("format_note") or f"{abr}kbps" if abr else "audio",
+                        "url": f"/download?url={url}&abr={abr}&type=audio",
                         "ext": "mp3",
                         "filesize": f.get("filesize") or f.get("filesize_approx") or 0
                     })
 
-            # Deduplicate berdasarkan height
-            seen_heights = set()
+            # Deduplicate by height, ambil yang terbaik per resolusi
+            seen = set()
             unique_formats = []
             for f in sorted(formats, key=lambda x: x["height"], reverse=True):
-                if f["height"] not in seen_heights:
-                    seen_heights.add(f["height"])
+                if f["height"] not in seen:
+                    seen.add(f["height"])
                     unique_formats.append(f)
 
             # Deduplicate audio
-            seen_abr = set()
+            seen_audio = set()
             unique_audio = []
-            for f in audio_formats:
-                key = f["quality"]
-                if key not in seen_abr:
-                    seen_abr.add(key)
+            for f in sorted(audio_formats, key=lambda x: x["quality"], reverse=True):
+                if f["quality"] not in seen_audio:
+                    seen_audio.add(f["quality"])
                     unique_audio.append(f)
 
-            # Fallback jika tidak ada progressive format
+            # Fallback jika benar-benar kosong
             if not unique_formats:
                 unique_formats.append({
                     "quality": "Best",
@@ -99,7 +97,6 @@ def info():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 @app.route("/download", methods=["GET"])
 def download():
