@@ -8,11 +8,11 @@ def build_ydl_opts(extra=None):
     opts = {
         "quiet": True,
         "no_warnings": True,
-        # ✅ Cookie dimatikan sementara (di-comment) agar tidak memicu error A/B testing YouTube
-        # "cookiefile": "cookies.txt" if os.path.exists("cookies.txt") else None,
+        # ✅ Cookie diaktifkan untuk membuktikan request bukan dari bot
+        "cookiefile": "cookies.txt" if os.path.exists("cookies.txt") else None,
         
-        # ✅ extractor_args (player_client iOS/Android) dihapus agar yt-dlp 
-        # bisa bebas memilih client web yang lebih stabil.
+        # ✅ extractor_args (player_client iOS/Android) dihapus 
+        # agar yt-dlp bebas memilih client web yang paling stabil.
     }
     if extra:
         opts.update(extra)
@@ -27,7 +27,8 @@ def info():
 
     ydl_opts = build_ydl_opts({
         "extract_flat": False,
-        "ignore_no_formats_error": True, # ✅ Memaksa yt-dlp mengembalikan data meskipun format default gagal
+        # ✅ Mencegah aplikasi crash jika format selector bawaan yt-dlp gagal
+        "ignore_no_formats_error": True, 
     })
 
     try:
