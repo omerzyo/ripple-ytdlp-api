@@ -4,17 +4,21 @@ import os
 
 app = Flask(__name__)
 
+# ✅ Mengunci lokasi file cookies menggunakan Absolute Path
+# Ini memastikan Python selalu mencari cookies.txt di folder yang sama dengan main.py
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+COOKIE_PATH = os.path.join(BASE_DIR, "cookies.txt")
+
 def build_ydl_opts(extra=None):
     opts = {
         "quiet": True,
         "no_warnings": True,
-        # ✅ Tetap menggunakan cookies dari akun tumbal untuk melewati blokir bot
-        "cookiefile": "cookies.txt" if os.path.exists("cookies.txt") else None,
+        # ✅ Membaca cookies.txt dengan path yang sudah dijamin benar
+        "cookiefile": COOKIE_PATH if os.path.exists(COOKIE_PATH) else None,
     }
     if extra:
         opts.update(extra)
     return opts
-
 
 @app.route("/info", methods=["GET"])
 def info():
@@ -25,7 +29,7 @@ def info():
     ydl_opts = build_ydl_opts({
         "extract_flat": False,
         "ignore_no_formats_error": True, 
-        "format": "all", # Menampilkan semua format mentah tanpa seleksi ketat di awal
+        "format": "all", # Menampilkan semua format mentah tanpa seleksi ketat
     })
 
     try:
@@ -119,7 +123,7 @@ def download():
         mime = "audio/mpeg"
         ext = "mp3"
     else:
-        # ✅ Ambil langsung video terbaik yang sudah menyatu agar tidak memicu error ketersediaan format terpisah
+        # ✅ Ambil langsung video terbaik yang sudah menyatu agar tidak memicu error ketersediaan format
         fmt = "best"
         postprocessors = []
         mime = "video/mp4"
