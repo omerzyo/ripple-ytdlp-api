@@ -1,2 +1,5 @@
+# nixpacks.toml
+[phases.setup]
+nixPkgs = ["ffmpeg"]
 flask
 yt-dlp
