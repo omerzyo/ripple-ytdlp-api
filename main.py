@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 import yt_dlp
-import os  # Tambahan untuk membaca port dari Railway
+import os
 
 app = Flask(__name__)
 
@@ -14,6 +14,15 @@ def info():
         "quiet": True,
         "no_warnings": True,
         "extract_flat": False,
+        # 1. MEMBACA FILE COOKIES (Solusi Mutlak Bypass Bot YouTube)
+        "cookiefile": "cookies.txt", 
+        
+        # 2. EKSTRA PENYAMARAN (Meniru client resmi iOS dan Android)
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["ios", "android"],
+            }
+        },
     }
 
     try:
@@ -57,6 +66,5 @@ def health():
     return jsonify({"status": "ok"})
 
 if __name__ == "__main__":
-    # Mengambil PORT dinamis dari Railway, jika lokal gunakan 8080
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
