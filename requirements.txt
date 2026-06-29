@@ -1,2 +1,2 @@
-flask
-yt-dlp
+Flask
+yt-dlp>=2024.07.09
