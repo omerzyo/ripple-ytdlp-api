@@ -4,21 +4,50 @@ import os
 
 app = Flask(__name__)
 
-# ✅ Mengunci lokasi file cookies menggunakan Absolute Path
-# Ini memastikan Python selalu mencari cookies.txt di folder yang sama dengan main.py
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 COOKIE_PATH = os.path.join(BASE_DIR, "cookies.txt")
+
+# ✅ User-Agent mobile yang konsisten dipakai untuk semua platform
+DEFAULT_UA = (
+    "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+)
 
 def build_ydl_opts(extra=None):
     opts = {
         "quiet": True,
         "no_warnings": True,
-        # ✅ Membaca cookies.txt dengan path yang sudah dijamin benar
         "cookiefile": COOKIE_PATH if os.path.exists(COOKIE_PATH) else None,
+        "user_agent": DEFAULT_UA,
+        # ✅ Header tambahan agar TikTok/Instagram/Twitter tidak reject request
+        "http_headers": {
+            "User-Agent": DEFAULT_UA,
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+        # ✅ Retry otomatis dari sisi yt-dlp jika network/timeout flaky
+        "retries": 3,
+        "fragment_retries": 3,
+        "socket_timeout": 30,
     }
     if extra:
         opts.update(extra)
     return opts
+
+
+def detect_platform(url: str) -> str:
+    u = url.lower()
+    if "tiktok.com" in u:
+        return "TIKTOK"
+    if "instagram.com" in u:
+        return "INSTAGRAM"
+    if "twitter.com" in u or "x.com" in u:
+        return "TWITTER"
+    if "facebook.com" in u or "fb.watch" in u:
+        return "FACEBOOK"
+    if "youtube.com" in u or "youtu.be" in u:
+        return "YOUTUBE"
+    return "UNKNOWN"
+
 
 @app.route("/info", methods=["GET"])
 def info():
@@ -26,10 +55,13 @@ def info():
     if not url:
         return jsonify({"error": "url required"}), 400
 
+    platform = detect_platform(url)
+
     ydl_opts = build_ydl_opts({
         "extract_flat": False,
-        "ignore_no_formats_error": True, 
-        "format": "all", # Menampilkan semua format mentah tanpa seleksi ketat
+        "ignore_no_formats_error": True,
+        "format": "all",
+        "noplaylist": True,
     })
 
     try:
@@ -56,13 +88,12 @@ def info():
                 elif acodec not in (None, "none") and vcodec in (None, "none"):
                     abr = int(f.get("abr") or 0)
                     audio_formats.append({
-                        "quality": f.get("format_note") or f"{abr}kbps" if abr else "audio",
+                        "quality": f.get("format_note") or (f"{abr}kbps" if abr else "audio"),
                         "url": f"/download?url={url}&abr={abr}&type=audio",
                         "ext": "mp3",
                         "filesize": f.get("filesize") or f.get("filesize_approx") or 0
                     })
 
-            # Deduplicate resolusi video
             seen = set()
             unique_formats = []
             for f in sorted(formats, key=lambda x: x["height"], reverse=True):
@@ -70,7 +101,6 @@ def info():
                     seen.add(f["height"])
                     unique_formats.append(f)
 
-            # Deduplicate audio
             seen_audio = set()
             unique_audio = []
             for f in sorted(audio_formats, key=lambda x: x["quality"], reverse=True):
@@ -78,6 +108,7 @@ def info():
                     seen_audio.add(f["quality"])
                     unique_audio.append(f)
 
+            # ✅ Fallback "Best" — penting untuk TikTok/IG yang sering cuma 1 format gabungan
             if not unique_formats:
                 unique_formats.append({
                     "quality": "Best",
@@ -87,8 +118,16 @@ def info():
                     "filesize": 0
                 })
 
+            default_title = {
+                "TIKTOK": "TikTok Video",
+                "INSTAGRAM": "Instagram Video",
+                "TWITTER": "Twitter Video",
+                "FACEBOOK": "Facebook Video",
+                "YOUTUBE": "YouTube Video",
+            }.get(platform, "Video")
+
             return jsonify({
-                "title": info.get("title", "YouTube Video"),
+                "title": info.get("title", default_title),
                 "thumbnail": info.get("thumbnail", ""),
                 "duration": info.get("duration", 0),
                 "formats": unique_formats,
@@ -96,13 +135,21 @@ def info():
             })
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        error_str = str(e)
+        # ✅ Pesan error lebih informatif per platform
+        if "Private" in error_str or "login" in error_str.lower():
+            msg = "Konten bersifat privat atau butuh login."
+        elif "Unsupported URL" in error_str:
+            msg = "URL tidak didukung."
+        elif "not available" in error_str.lower() or "unavailable" in error_str.lower():
+            msg = "Konten tidak tersedia atau sudah dihapus."
+        else:
+            msg = error_str
+        return jsonify({"error": msg}), 500
+
 
 @app.route("/download", methods=["GET"])
 def download():
-    """
-    Endpoint yang langsung pipe video/audio ke client.
-    """
     url = request.args.get("url")
     height = request.args.get("height", "0")
     abr = request.args.get("abr", "0")
@@ -111,9 +158,7 @@ def download():
     if not url:
         return jsonify({"error": "url required"}), 400
 
-    # Pilih format selector berdasarkan tipe dan kualitas
     if media_type == "audio":
-        # ✅ Ambil format terbaik yang tersedia lalu biarkan ffmpeg mengekstrak audionya menjadi MP3
         fmt = "best"
         postprocessors = [{
             "key": "FFmpegExtractAudio",
@@ -123,7 +168,6 @@ def download():
         mime = "audio/mpeg"
         ext = "mp3"
     else:
-        # ✅ Ambil langsung video terbaik yang sudah menyatu agar tidak memicu error ketersediaan format
         fmt = "best"
         postprocessors = []
         mime = "video/mp4"
@@ -143,14 +187,20 @@ def download():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
-            
+
             if not os.path.exists(filename):
-                base = os.path.splitext(filename)
+                base = os.path.splitext(filename)[0]
                 for candidate_ext in [ext, "mp4", "webm", "mp3", "m4a"]:
                     candidate = f"{base}.{candidate_ext}"
                     if os.path.exists(candidate):
                         filename = candidate
                         break
+
+            # ✅ Validasi file tidak kosong/terlalu kecil sebelum dikirim
+            if not os.path.exists(filename) or os.path.getsize(filename) < 10240:
+                if os.path.exists(filename):
+                    os.remove(filename)
+                return jsonify({"error": "File hasil download tidak valid atau terlalu kecil."}), 500
 
         def generate():
             with open(filename, "rb") as f:
