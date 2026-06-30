@@ -25,6 +25,8 @@ def build_ydl_opts(extra=None):
         "retries": 3,
         "fragment_retries": 3,
         "socket_timeout": 30,
+        # ✅ Wajib agar TikTok lolos deteksi bot — butuh curl_cffi di requirements.txt
+        "impersonate": "chrome",
     }
     if extra:
         opts.update(extra)
@@ -51,6 +53,14 @@ def info():
     url = request.args.get("url")
     if not url:
         return jsonify({"error": "url required"}), 400
+
+    # ✅ TikTok Photo Post (slide foto) tidak didukung yt-dlp — tolak lebih awal
+    if "tiktok.com" in url.lower() and "/photo/" in url.lower():
+        return jsonify({
+            "error": "TikTok Photo Post (slide foto) belum didukung. Hanya video TikTok yang bisa diunduh.",
+            "platform": "TIKTOK",
+            "cookie_exists": os.path.exists(COOKIE_PATH)
+        }), 400
 
     platform = detect_platform(url)
 
@@ -131,7 +141,6 @@ def info():
             })
 
     except Exception as e:
-        # ✅ Tampilkan error asli dari yt-dlp + info debug tambahan
         error_str = str(e)
         return jsonify({
             "error": error_str,
