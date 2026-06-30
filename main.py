@@ -7,7 +7,6 @@ app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 COOKIE_PATH = os.path.join(BASE_DIR, "cookies.txt")
 
-# ✅ User-Agent mobile yang konsisten dipakai untuk semua platform
 DEFAULT_UA = (
     "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
@@ -19,12 +18,10 @@ def build_ydl_opts(extra=None):
         "no_warnings": True,
         "cookiefile": COOKIE_PATH if os.path.exists(COOKIE_PATH) else None,
         "user_agent": DEFAULT_UA,
-        # ✅ Header tambahan agar TikTok/Instagram/Twitter tidak reject request
         "http_headers": {
             "User-Agent": DEFAULT_UA,
             "Accept-Language": "en-US,en;q=0.9",
         },
-        # ✅ Retry otomatis dari sisi yt-dlp jika network/timeout flaky
         "retries": 3,
         "fragment_retries": 3,
         "socket_timeout": 30,
@@ -108,7 +105,6 @@ def info():
                     seen_audio.add(f["quality"])
                     unique_audio.append(f)
 
-            # ✅ Fallback "Best" — penting untuk TikTok/IG yang sering cuma 1 format gabungan
             if not unique_formats:
                 unique_formats.append({
                     "quality": "Best",
@@ -135,17 +131,13 @@ def info():
             })
 
     except Exception as e:
+        # ✅ Tampilkan error asli dari yt-dlp + info debug tambahan
         error_str = str(e)
-        # ✅ Pesan error lebih informatif per platform
-        if "Private" in error_str or "login" in error_str.lower():
-            msg = "Konten bersifat privat atau butuh login."
-        elif "Unsupported URL" in error_str:
-            msg = "URL tidak didukung."
-        elif "not available" in error_str.lower() or "unavailable" in error_str.lower():
-            msg = "Konten tidak tersedia atau sudah dihapus."
-        else:
-            msg = error_str
-        return jsonify({"error": msg}), 500
+        return jsonify({
+            "error": error_str,
+            "platform": platform,
+            "cookie_exists": os.path.exists(COOKIE_PATH)
+        }), 500
 
 
 @app.route("/download", methods=["GET"])
@@ -196,7 +188,6 @@ def download():
                         filename = candidate
                         break
 
-            # ✅ Validasi file tidak kosong/terlalu kecil sebelum dikirim
             if not os.path.exists(filename) or os.path.getsize(filename) < 10240:
                 if os.path.exists(filename):
                     os.remove(filename)
@@ -228,6 +219,22 @@ def download():
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"})
+
+
+@app.route("/cookie-status", methods=["GET"])
+def cookie_status():
+    if not os.path.exists(COOKIE_PATH):
+        return jsonify({"status": "missing", "message": "cookies.txt tidak ditemukan"}), 404
+
+    import time
+    age_seconds = os.path.getmtime(COOKIE_PATH)
+    age_days = (time.time() - age_seconds) / 86400
+
+    return jsonify({
+        "status": "exists",
+        "age_days": round(age_days, 1),
+        "warning": "Cookies mungkin expired, sebaiknya update" if age_days > 14 else "OK"
+    })
 
 
 if __name__ == "__main__":
